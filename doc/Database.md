@@ -174,6 +174,11 @@ Run the following in order in Supabase SQL Editor to recreate the entire databas
 
 ```sql
 -- ============================================================
+-- 0. EXTENSIONS
+-- ============================================================
+create extension if not exists pgcrypto;
+
+-- ============================================================
 -- 1. PROFILES
 -- ============================================================
 create table profiles (
@@ -199,8 +204,8 @@ create table projects (
 -- ============================================================
 create table project_members (
   id uuid default gen_random_uuid() primary key,
-  project_id uuid references projects(id) on delete cascade,
-  user_id uuid references profiles(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
   joined_at timestamp with time zone default now(),
   unique(project_id, user_id)
 );
@@ -210,7 +215,7 @@ create table project_members (
 -- ============================================================
 create table lists (
   id uuid default gen_random_uuid() primary key,
-  project_id uuid references projects(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
   name text not null,
   color text default '#6366f1',
   position integer default 0,
@@ -223,7 +228,7 @@ create table lists (
 -- ============================================================
 create table labels (
   id uuid default gen_random_uuid() primary key,
-  project_id uuid references projects(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
   name text not null,
   color text default '#6366f1'
 );
@@ -233,7 +238,7 @@ create table labels (
 -- ============================================================
 create table items (
   id uuid default gen_random_uuid() primary key,
-  project_id uuid references projects(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
   list_id uuid references lists(id) on delete set null,
   title text not null,
   description text,
@@ -249,8 +254,8 @@ create table items (
 -- 7. ITEM ASSIGNEES
 -- ============================================================
 create table item_assignees (
-  item_id uuid references items(id) on delete cascade,
-  user_id uuid references profiles(id) on delete cascade,
+  item_id uuid not null references items(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
   primary key (item_id, user_id)
 );
 
@@ -258,8 +263,8 @@ create table item_assignees (
 -- 8. ITEM LABELS
 -- ============================================================
 create table item_labels (
-  item_id uuid references items(id) on delete cascade,
-  label_id uuid references labels(id) on delete cascade,
+  item_id uuid not null references items(id) on delete cascade,
+  label_id uuid not null references labels(id) on delete cascade,
   primary key (item_id, label_id)
 );
 
@@ -275,49 +280,60 @@ alter table items enable row level security;
 alter table item_assignees enable row level security;
 alter table item_labels enable row level security;
 
+-- Helper function to check project membership without RLS recursion
+create or replace function is_project_member(p_project_id uuid)
+returns boolean
+security definer
+set search_path = public
+language sql stable
+as $$
+  select exists (
+    select 1 from project_members
+    where project_id = p_project_id and user_id = auth.uid()
+  );
+$$;
+
 -- Profiles
 create policy "profiles_read" on profiles for select using (true);
-create policy "profiles_write" on profiles for all using (auth.uid() = id);
+create policy "profiles_insert" on profiles for insert with check (auth.uid() = id);
+create policy "profiles_update" on profiles for update using (auth.uid() = id) with check (auth.uid() = id);
+create policy "profiles_delete" on profiles for delete using (auth.uid() = id);
 
 -- Projects
-create policy "projects_read" on projects for select using (
-  exists (select 1 from project_members where project_id = id and user_id = auth.uid())
-);
+create policy "projects_read" on projects for select using (is_project_member(id));
 create policy "projects_insert" on projects for insert with check (auth.uid() = created_by);
-create policy "projects_update" on projects for update using (
-  exists (select 1 from project_members where project_id = id and user_id = auth.uid())
-);
+create policy "projects_update" on projects for update using (is_project_member(id)) with check (is_project_member(id));
+create policy "projects_delete" on projects for delete using (is_project_member(id));
 
--- Project members
-create policy "members_read" on project_members for select using (
-  exists (select 1 from project_members pm where pm.project_id = project_id and pm.user_id = auth.uid())
-);
-create policy "members_insert" on project_members for insert with check (
-  auth.uid() = user_id or
-  exists (select 1 from project_members where project_id = project_members.project_id and user_id = auth.uid())
-);
+-- Project members (no self-reference — use user_id = auth.uid() for read, existing member for insert)
+create policy "members_read" on project_members for select using (user_id = auth.uid());
+create policy "members_insert" on project_members for insert with check (is_project_member(project_id));
 
 -- Lists
-create policy "lists_all" on lists for all using (
-  exists (select 1 from project_members where project_id = lists.project_id and user_id = auth.uid())
-);
+create policy "lists_all" on lists for all
+  using (is_project_member(project_id))
+  with check (is_project_member(project_id));
 
 -- Labels
-create policy "labels_all" on labels for all using (
-  exists (select 1 from project_members where project_id = labels.project_id and user_id = auth.uid())
-);
+create policy "labels_all" on labels for all
+  using (is_project_member(project_id))
+  with check (is_project_member(project_id));
 
 -- Items
-create policy "items_all" on items for all using (
-  exists (select 1 from project_members where project_id = items.project_id and user_id = auth.uid())
-);
+create policy "items_all" on items for all
+  using (is_project_member(project_id))
+  with check (is_project_member(project_id));
 
 -- Item assignees
 create policy "item_assignees_all" on item_assignees for all using (
   exists (
     select 1 from items
-    join project_members on project_members.project_id = items.project_id
-    where items.id = item_assignees.item_id and project_members.user_id = auth.uid()
+    where items.id = item_assignees.item_id and is_project_member(items.project_id)
+  )
+) with check (
+  exists (
+    select 1 from items
+    where items.id = item_assignees.item_id and is_project_member(items.project_id)
   )
 );
 
@@ -325,8 +341,12 @@ create policy "item_assignees_all" on item_assignees for all using (
 create policy "item_labels_all" on item_labels for all using (
   exists (
     select 1 from items
-    join project_members on project_members.project_id = items.project_id
-    where items.id = item_labels.item_id and project_members.user_id = auth.uid()
+    where items.id = item_labels.item_id and is_project_member(items.project_id)
+  )
+) with check (
+  exists (
+    select 1 from items
+    where items.id = item_labels.item_id and is_project_member(items.project_id)
   )
 );
 
@@ -336,13 +356,17 @@ create policy "item_labels_all" on item_labels for all using (
 
 -- Auto-create profile on signup
 create or replace function handle_new_user()
-returns trigger as $$
+returns trigger
+security definer
+set search_path = public, auth
+language plpgsql
+as $$
 begin
   insert into profiles (id, name, avatar_url)
   values (new.id, new.raw_user_meta_data->>'name', null);
   return new;
 end;
-$$ language plpgsql security definer;
+$$;
 
 create trigger on_auth_user_created
   after insert on auth.users
@@ -350,13 +374,17 @@ create trigger on_auth_user_created
 
 -- Auto-add creator as project member
 create or replace function handle_new_project()
-returns trigger as $$
+returns trigger
+security definer
+set search_path = public
+language plpgsql
+as $$
 begin
   insert into project_members (project_id, user_id)
   values (new.id, new.created_by);
   return new;
 end;
-$$ language plpgsql security definer;
+$$;
 
 create trigger on_project_created
   after insert on projects
