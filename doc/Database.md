@@ -82,8 +82,8 @@ Items are the cards on the board. They belong to a project and optionally to a l
 | Column | Type | Description |
 |---|---|---|
 | `id` | uuid (PK) | Auto-generated unique ID. |
-| `project_id` | uuid (FK → projects) | The project this item belongs to. |
-| `list_id` | uuid (FK → lists, nullable) | The list this item is in. Null if not placed in any list. |
+| `project_id` | uuid (FK → projects) | The project this item belongs to. Not null. |
+| `list_id` | uuid (FK → lists, nullable) | The list this item is in. Null if not placed in any list. Enforced via composite FK `(project_id, list_id)` — guarantees the list belongs to the same project. |
 | `title` | text | Title of the item. Required. |
 | `description` | text | Optional rich description. |
 | `item_type` | text | Type of item: `task`, `bug`, `feature`, `note`, etc. Default `task`. User-defined. |
@@ -250,6 +250,13 @@ create table items (
   created_at timestamp with time zone default now()
 );
 
+-- Composite unique on lists to support the cross-project FK check on items
+alter table lists add constraint lists_project_id_id_unique unique (project_id, id);
+
+-- Ensures an item's list always belongs to the same project as the item
+alter table items add constraint items_project_list_fk
+  foreign key (project_id, list_id) references lists(project_id, id);
+
 -- ============================================================
 -- 7. ITEM ASSIGNEES
 -- ============================================================
@@ -305,8 +312,8 @@ create policy "projects_insert" on projects for insert with check (auth.uid() = 
 create policy "projects_update" on projects for update using (is_project_member(id)) with check (is_project_member(id));
 create policy "projects_delete" on projects for delete using (is_project_member(id));
 
--- Project members (no self-reference — use user_id = auth.uid() for read, existing member for insert)
-create policy "members_read" on project_members for select using (user_id = auth.uid());
+-- Project members
+create policy "members_read" on project_members for select using (is_project_member(project_id));
 create policy "members_insert" on project_members for insert with check (is_project_member(project_id));
 
 -- Lists
@@ -324,7 +331,7 @@ create policy "items_all" on items for all
   using (is_project_member(project_id))
   with check (is_project_member(project_id));
 
--- Item assignees
+-- Item assignees (assignee must be a member of the item's project)
 create policy "item_assignees_all" on item_assignees for all using (
   exists (
     select 1 from items
@@ -333,11 +340,14 @@ create policy "item_assignees_all" on item_assignees for all using (
 ) with check (
   exists (
     select 1 from items
-    where items.id = item_assignees.item_id and is_project_member(items.project_id)
+    join project_members pm on pm.project_id = items.project_id
+    where items.id = item_assignees.item_id
+      and is_project_member(items.project_id)
+      and pm.user_id = item_assignees.user_id
   )
 );
 
--- Item labels
+-- Item labels (label must belong to the same project as the item)
 create policy "item_labels_all" on item_labels for all using (
   exists (
     select 1 from items
@@ -346,7 +356,10 @@ create policy "item_labels_all" on item_labels for all using (
 ) with check (
   exists (
     select 1 from items
-    where items.id = item_labels.item_id and is_project_member(items.project_id)
+    join labels on labels.id = item_labels.label_id
+    where items.id = item_labels.item_id
+      and is_project_member(items.project_id)
+      and labels.project_id = items.project_id
   )
 );
 
