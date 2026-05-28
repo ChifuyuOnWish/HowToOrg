@@ -15,7 +15,7 @@ function Signup() {
     setError(null)
     setLoading(true)
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { name } }
@@ -23,7 +23,12 @@ function Signup() {
 
     setLoading(false)
     if (error) { setError(error.message); return }
-    navigate('/projects')
+
+    if (data.session) {
+      navigate('/projects')
+    } else {
+      setError('Please check your email to confirm your account.')
+    }
   }
 
   const inputClass = `w-full bg-[#13131f] border border-[#2a2a3d] rounded-xl px-4 py-3 text-sm text-white
@@ -64,7 +69,11 @@ function Signup() {
             required
           />
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && (
+            <p className={`text-sm ${error.includes('check your email') ? 'text-indigo-400' : 'text-red-400'}`}>
+              {error}
+            </p>
+          )}
 
           <button
             type="submit"
