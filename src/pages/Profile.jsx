@@ -19,16 +19,22 @@ function Profile() {
     setError(null)
     setSuccess(false)
 
-    const { error } = await supabase.auth.updateUser({
+    const { error: authError } = await supabase.auth.updateUser({
       data: { name }
     })
 
-    if (!error) {
-      await supabase.from('profiles').update({ name }).eq('id', user.id)
+    if (authError) {
+      setLoading(false)
+      setError(authError.message)
+      return
     }
 
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({ id: user.id, name })
+
     setLoading(false)
-    if (error) { setError(error.message); return }
+    if (profileError) { setError(profileError.message); return }
     setSuccess(true)
   }
 
@@ -38,7 +44,7 @@ function Profile() {
 
   const initials = name
     ? name.slice(0, 2).toUpperCase()
-    : user?.email?.slice(0, 2).toUpperCase()
+    : user?.email?.slice(0, 2)?.toUpperCase() ?? '??'
 
   return (
     <div className="max-w-md mx-auto px-6 py-12">
@@ -47,7 +53,6 @@ function Profile() {
         <h1 className="text-3xl font-bold text-white">Profile</h1>
       </div>
 
-      {/* Avatar placeholder */}
       <div className="flex items-center gap-4 mb-8">
         <div className="w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center text-xl font-bold text-white">
           {initials}
@@ -60,8 +65,9 @@ function Profile() {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-400 font-medium">Display name</label>
+          <label htmlFor="display-name" className="text-xs text-slate-400 font-medium">Display name</label>
           <input
+            id="display-name"
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
@@ -72,8 +78,9 @@ function Profile() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-400 font-medium">Email</label>
+          <label htmlFor="email" className="text-xs text-slate-400 font-medium">Email</label>
           <input
+            id="email"
             type="email"
             value={user?.email || ''}
             className={inputClass + ' opacity-50 cursor-not-allowed'}

@@ -11,14 +11,14 @@ function Layout() {
 
   const initials = user?.user_metadata?.name
     ? user.user_metadata.name.slice(0, 2).toUpperCase()
-    : user?.email?.slice(0, 2).toUpperCase()
+    : user?.email?.slice(0, 2)?.toUpperCase() ?? '??'
 
   async function handleLogout() {
-    await supabase.auth.signOut()
+    const { error } = await supabase.auth.signOut()
+    if (error) { console.error('Logout error:', error); return }
     navigate('/login')
   }
 
-  // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -31,16 +31,16 @@ function Layout() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 h-12 bg-[#0a0a0f]/80 backdrop-blur border-b border-[#1e1e2e] flex items-center justify-between px-6">
         <Link to="/projects" className="text-sm font-semibold text-white tracking-tight hover:text-indigo-400 transition-colors">
           HowToOrg
         </Link>
 
-        {/* Account icon */}
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen(prev => !prev)}
+            aria-label="Account menu"
+            aria-expanded={dropdownOpen}
             className="w-8 h-8 rounded-full bg-indigo-600 hover:bg-indigo-500 transition-colors
               flex items-center justify-center text-xs font-bold text-white"
           >
@@ -75,7 +75,6 @@ function Layout() {
         </div>
       </header>
 
-      {/* Page content */}
       <main className="pt-12">
         <Outlet />
       </main>
