@@ -20,6 +20,11 @@ function App() {
             </ProtectedRoute>
           }>
             <Route path="/projects" element={<Projects />} />
+            <Route path="/projects/:projectId" element={
+              <div className="min-h-screen flex items-center justify-center">
+                <p className="text-indigo-400 font-mono text-sm">Board view — coming soon</p>
+              </div>
+            } />
             <Route path="/profile" element={<Profile />} />
           </Route>
           <Route path="*" element={<Navigate to="/projects" replace />} />

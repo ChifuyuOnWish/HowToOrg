@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -8,38 +8,41 @@ function Projects() {
   const navigate = useNavigate()
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null)
   const [creating, setCreating] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [error, setError] = useState(null)
+  const [formError, setFormError] = useState(null)
+
+  const fetchProjects = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('project_members')
+      .select(`
+        project:projects (
+          id,
+          name,
+          description,
+          created_at
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('joined_at', { ascending: false })
+
+    setLoading(false)
+    if (error) { setFetchError(error.message); return }
+    setProjects(data.map(row => row.project).filter(Boolean))
+  }, [user.id])
 
   useEffect(() => {
     fetchProjects()
-  }, [])
-
-  async function fetchProjects() {
-    const { data, error } = await supabase
-      .from('projects')
-      .select(`
-        id,
-        name,
-        description,
-        created_at,
-        project_members(count)
-      `)
-      .order('created_at', { ascending: false })
-
-    setLoading(false)
-    if (error) { console.error(error); return }
-    setProjects(data ?? [])
-  }
+  }, [fetchProjects])
 
   async function handleCreate(e) {
     e.preventDefault()
     if (!name.trim()) return
     setCreating(true)
-    setError(null)
+    setFormError(null)
 
     const { error } = await supabase
       .from('projects')
@@ -47,16 +50,26 @@ function Projects() {
 
     if (error) {
       setCreating(false)
-      setError(error.message)
+      setFormError(error.message)
       return
     }
 
-    // Re-fetch all projects after creation so RLS has time to apply
-    await fetchProjects()
+    // Re-fetch to get the new project with its id, then navigate to it
+    const { data } = await supabase
+      .from('project_members')
+      .select('project:projects(id)')
+      .eq('user_id', user.id)
+      .order('joined_at', { ascending: false })
+      .limit(1)
+      .single()
+
     setCreating(false)
-    setName('')
-    setDescription('')
-    setShowForm(false)
+    if (data?.project?.id) {
+      navigate(`/projects/${data.project.id}`)
+    } else {
+      await fetchProjects()
+      setShowForm(false)
+    }
   }
 
   const inputClass = `w-full bg-[#13131f] border border-[#2a2a3d] rounded-xl px-4 py-3 text-sm text-white
@@ -65,7 +78,6 @@ function Projects() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12">
-      {/* Header */}
       <div className="flex items-center justify-between mb-10">
         <div>
           <p className="text-xs font-mono tracking-widest text-indigo-400 uppercase mb-2">Workspace</p>
@@ -81,7 +93,6 @@ function Projects() {
         </button>
       </div>
 
-      {/* Create form */}
       {showForm && (
         <form onSubmit={handleCreate} className="mb-8 bg-[#11111c] border border-[#1e1e2e] rounded-2xl p-5 flex flex-col gap-4">
           <p className="text-xs font-mono tracking-widest text-slate-500 uppercase">New project</p>
@@ -100,7 +111,7 @@ function Projects() {
             className={inputClass + ' resize-none'}
             rows={2}
           />
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {formError && <p className="text-red-400 text-sm">{formError}</p>}
           <div className="flex gap-3">
             <button
               type="submit"
@@ -122,10 +133,13 @@ function Projects() {
         </form>
       )}
 
-      {/* Projects list */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+        </div>
+      ) : fetchError ? (
+        <div className="text-center py-20">
+          <p className="text-red-400 text-sm">{fetchError}</p>
         </div>
       ) : projects.length === 0 ? (
         <div className="text-center py-20">
