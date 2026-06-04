@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
+import Projects from './pages/Projects'
 import Profile from './pages/Profile'
 
 function App() {
@@ -18,14 +19,15 @@ function App() {
               <Layout />
             </ProtectedRoute>
           }>
-            <Route path="/projects" element={
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/projects/:projectId" element={
               <div className="min-h-screen flex items-center justify-center">
-                <p className="text-indigo-400 font-mono text-sm">Projects page — coming soon</p>
+                <p className="text-indigo-400 font-mono text-sm">Board view — coming soon</p>
               </div>
             } />
             <Route path="/profile" element={<Profile />} />
           </Route>
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/projects" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
