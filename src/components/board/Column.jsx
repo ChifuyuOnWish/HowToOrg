@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import ItemCard from './ItemCard'
+import AddItem from './AddItem'
 
 function Column({ column, onColumnUpdated, onColumnDeleted }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(column.name)
   const [showMenu, setShowMenu] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [items, setItems] = useState([])
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -17,6 +20,24 @@ function Column({ column, onColumnUpdated, onColumnDeleted }) {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  useEffect(() => {
+    async function fetchItems() {
+      const { data, error } = await supabase
+        .from('items')
+        .select('*')
+        .eq('list_id', column.id)
+        .order('position', { ascending: true })
+
+      if (error) { console.error(error); return }
+      setItems(data ?? [])
+    }
+    fetchItems()
+  }, [column.id])
+
+  function handleItemAdded(newItem) {
+    setItems(prev => [...prev, newItem])
+  }
 
   async function handleRename(e) {
     e.preventDefault()
@@ -75,9 +96,8 @@ function Column({ column, onColumnUpdated, onColumnDeleted }) {
           </span>
         )}
 
-        <span className="text-xs text-slate-500 font-mono">0</span>
+        <span className="text-xs text-slate-500 font-mono">{items.length}</span>
 
-        {/* Menu */}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setShowMenu(prev => !prev)}
@@ -104,17 +124,19 @@ function Column({ column, onColumnUpdated, onColumnDeleted }) {
         </div>
       </div>
 
-      {/* Items area */}
-      <div className="flex-1 p-3 min-h-[200px]">
-        <p className="text-xs text-slate-600 text-center mt-4">No items yet</p>
+      {/* Items */}
+      <div className="flex-1 p-3 flex flex-col gap-2 overflow-y-auto max-h-[calc(100vh-280px)]">
+        {items.length === 0 && (
+          <p className="text-xs text-slate-600 text-center mt-4">No items yet</p>
+        )}
+        {items.map(item => (
+          <ItemCard key={item.id} item={item} />
+        ))}
       </div>
 
-      {/* Add item button */}
+      {/* Add item */}
       <div className="px-3 pb-3">
-        <button className="w-full py-2 rounded-xl text-xs text-slate-500 hover:text-indigo-400
-          border border-dashed border-[#2a2a3d] hover:border-indigo-500/50 transition-all duration-200">
-          + Add item
-        </button>
+        <AddItem column={column} onItemAdded={handleItemAdded} />
       </div>
     </div>
   )
