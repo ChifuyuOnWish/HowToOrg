@@ -26,6 +26,14 @@ function Board({ projectId }) {
     setColumns(prev => [...prev, newColumn])
   }
 
+  function handleColumnUpdated(updatedColumn) {
+    setColumns(prev => prev.map(c => c.id === updatedColumn.id ? updatedColumn : c))
+  }
+
+  function handleColumnDeleted(columnId) {
+    setColumns(prev => prev.filter(c => c.id !== columnId))
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
@@ -33,10 +41,15 @@ function Board({ projectId }) {
   )
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-6 px-6 pt-2 min-h-[calc(100vh-180px)]"
+    <div className="flex gap-4 overflow-x-auto pb-6 px-6 pt-4 min-h-[calc(100vh-180px)]"
       style={{ scrollbarWidth: 'thin' }}>
       {columns.map(column => (
-        <Column key={column.id} column={column} />
+        <Column
+          key={column.id}
+          column={column}
+          onColumnUpdated={handleColumnUpdated}
+          onColumnDeleted={handleColumnDeleted}
+        />
       ))}
       <AddColumn projectId={projectId} onColumnAdded={handleColumnAdded} />
     </div>
