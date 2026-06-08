@@ -130,7 +130,14 @@ function Column({ column, onColumnUpdated, onColumnDeleted }) {
           <p className="text-xs text-slate-600 text-center mt-4">No items yet</p>
         )}
         {items.map(item => (
-          <ItemCard key={item.id} item={item} />
+          <ItemCard
+            key={item.id}
+            item={item}
+            projectId={column.project_id}
+            onItemUpdated={(updated) =>
+            setItems(prev => prev.map(i => i.id === updated.id ? updated : i))
+            }
+          />
         ))}
       </div>
 
