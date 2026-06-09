@@ -36,7 +36,7 @@ function Board({ projectId, filters }) {
 
     const { data: allItems } = await supabase
       .from('items')
-      .select('*, item_assignees(user_id)')
+      .select('*, item_assignees(user_id), item_labels(label_id)')
       .eq('project_id', projectId)
       .order('position', { ascending: true })
 
@@ -156,9 +156,13 @@ function Board({ projectId, filters }) {
 
   function applyFilters(listItems) {
     return listItems.filter(item => {
-      if ((filters.assignees ?? []).length === 0) return true
-      const itemAssigneeIds = item.item_assignees?.map(a => a.user_id) ?? []
-      return filters.assignees.some(id => itemAssigneeIds.includes(id))
+      const matchesAssignee = (filters.assignees ?? []).length === 0 ||
+        item.item_assignees?.some(a => filters.assignees.includes(a.user_id))
+
+      const matchesLabel = (filters.labels ?? []).length === 0 ||
+        item.item_labels?.some(l => filters.labels.includes(l.label_id))
+
+      return matchesAssignee && matchesLabel
     })
   }
 

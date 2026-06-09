@@ -5,6 +5,7 @@ import Board from '../components/board/Board'
 import FilterBar from '../components/board/FilterBar'
 import Roadmap from '../components/roadmap/Roadmap'
 import InviteMembers from '../components/InviteMembers'
+import Labels from '../components/Labels'
 
 function Project() {
   const { projectId } = useParams()
@@ -12,7 +13,7 @@ function Project() {
   const [project, setProject] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('board')
-  const [filters, setFilters] = useState({ assignees: [] })
+  const [filters, setFilters] = useState({ assignees: [], labels: [] })
 
   useEffect(() => {
     async function fetchProject() {
@@ -46,7 +47,7 @@ function Project() {
         </div>
 
         <div className="flex gap-1 border-b border-[#1e1e2e]">
-          {['board', 'roadmap', 'members'].map(t => (
+          {['board', 'roadmap', 'labels', 'members'].map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -74,6 +75,8 @@ function Project() {
       )}
 
       {tab === 'roadmap' && <Roadmap projectId={projectId} />}
+
+      {tab === 'labels' && <Labels projectId={projectId} />}
 
       {tab === 'members' && (
         <div className="max-w-xl mx-auto w-full px-6 py-8">

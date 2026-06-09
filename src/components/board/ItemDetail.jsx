@@ -7,12 +7,16 @@ function ItemDetail({ item, projectId, onClose, onItemUpdated }) {
   const [dueDate, setDueDate] = useState(item.due_date ?? '')
   const [members, setMembers] = useState([])
   const [assignees, setAssignees] = useState([])
+  const [labels, setLabels] = useState([])
+  const [itemLabels, setItemLabels] = useState([])
   const [saving, setSaving] = useState(false)
   const backdropRef = useRef(null)
 
   useEffect(() => {
     fetchMembers()
     fetchAssignees()
+    fetchLabels()
+    fetchItemLabels()
   }, [projectId, item.id])
 
   useEffect(() => {
@@ -39,10 +43,27 @@ function ItemDetail({ item, projectId, onClose, onItemUpdated }) {
     setAssignees(data?.map(a => a.profiles).filter(Boolean) ?? [])
   }
 
+  async function fetchLabels() {
+    const { data } = await supabase
+      .from('labels')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('name', { ascending: true })
+    setLabels(data ?? [])
+  }
+
+  async function fetchItemLabels() {
+    const { data } = await supabase
+      .from('item_labels')
+      .select('label_id')
+      .eq('item_id', item.id)
+    setItemLabels(data?.map(l => l.label_id) ?? [])
+  }
+
   async function handleSave() {
     setSaving(true)
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('items')
       .update({
         title,
@@ -50,12 +71,22 @@ function ItemDetail({ item, projectId, onClose, onItemUpdated }) {
         due_date: dueDate || null,
       })
       .eq('id', item.id)
-      .select('*, item_assignees(user_id)')
+
+    if (error) {
+      setSaving(false)
+      console.error(error)
+      return
+    }
+
+    // Re-fetch avec tout
+    const { data } = await supabase
+      .from('items')
+      .select('*, item_assignees(user_id), item_labels(label_id)')
+      .eq('id', item.id)
       .single()
 
     setSaving(false)
-    if (error) { console.error(error); return }
-    onItemUpdated(data)
+    if (data) onItemUpdated(data)
   }
 
   async function toggleAssignee(member) {
@@ -75,10 +106,35 @@ function ItemDetail({ item, projectId, onClose, onItemUpdated }) {
       setAssignees(prev => [...prev, member])
     }
 
-    // Re-fetch item with fresh assignees and bubble up to board without closing modal
     const { data } = await supabase
       .from('items')
       .select('*, item_assignees(user_id)')
+      .eq('id', item.id)
+      .single()
+
+    if (data) onItemUpdated(data, false)
+  }
+
+  async function toggleLabel(labelId) {
+    const isAttached = itemLabels.includes(labelId)
+
+    if (isAttached) {
+      await supabase
+        .from('item_labels')
+        .delete()
+        .eq('item_id', item.id)
+        .eq('label_id', labelId)
+      setItemLabels(prev => prev.filter(id => id !== labelId))
+    } else {
+      await supabase
+        .from('item_labels')
+        .insert({ item_id: item.id, label_id: labelId })
+      setItemLabels(prev => [...prev, labelId])
+    }
+
+    const { data } = await supabase
+      .from('items')
+      .select('*, item_assignees(user_id), item_labels(label_id)')
       .eq('id', item.id)
       .single()
 
@@ -99,7 +155,7 @@ function ItemDetail({ item, projectId, onClose, onItemUpdated }) {
     >
       <div className="w-full max-w-2xl bg-[#11111c] border border-[#1e1e2e] rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
 
-        {/* Modal header */}
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e1e2e]">
           <p className="text-xs font-mono tracking-widest text-slate-500 uppercase">Item detail</p>
           <button
@@ -110,7 +166,7 @@ function ItemDetail({ item, projectId, onClose, onItemUpdated }) {
           </button>
         </div>
 
-        {/* Modal body */}
+        {/* Body */}
         <div className="overflow-y-auto flex-1 px-6 py-5 flex flex-col gap-5">
 
           {/* Title */}
@@ -140,9 +196,30 @@ function ItemDetail({ item, projectId, onClose, onItemUpdated }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs text-slate-400 font-medium">Labels</label>
-              <div className="bg-[#13131f] border border-[#2a2a3d] rounded-xl px-4 py-3 text-sm text-slate-600">
-                Coming soon
-              </div>
+              {labels.length === 0 ? (
+                <p className="text-xs text-slate-600">No labels in this project yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {labels.map(label => {
+                    const isAttached = itemLabels.includes(label.id)
+                    return (
+                      <button
+                        key={label.id}
+                        onClick={() => toggleLabel(label.id)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200"
+                        style={{
+                          backgroundColor: isAttached ? label.color + '33' : '#13131f',
+                          border: `1px solid ${isAttached ? label.color : '#2a2a3d'}`,
+                          color: isAttached ? label.color : '#64748b',
+                        }}
+                      >
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: label.color }} />
+                        {label.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs text-slate-400 font-medium">Due date</label>
