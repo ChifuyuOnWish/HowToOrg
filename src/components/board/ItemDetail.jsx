@@ -50,7 +50,7 @@ function ItemDetail({ item, projectId, onClose, onItemUpdated }) {
         due_date: dueDate || null,
       })
       .eq('id', item.id)
-      .select()
+      .select('*, item_assignees(user_id)')
       .single()
 
     setSaving(false)
@@ -74,6 +74,15 @@ function ItemDetail({ item, projectId, onClose, onItemUpdated }) {
         .insert({ item_id: item.id, user_id: member.id })
       setAssignees(prev => [...prev, member])
     }
+
+    // Re-fetch item with fresh assignees and bubble up to board without closing modal
+    const { data } = await supabase
+      .from('items')
+      .select('*, item_assignees(user_id)')
+      .eq('id', item.id)
+      .single()
+
+    if (data) onItemUpdated(data, false)
   }
 
   const initials = (name) => name?.slice(0, 2).toUpperCase() ?? '??'

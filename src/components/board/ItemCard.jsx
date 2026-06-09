@@ -43,9 +43,9 @@ function ItemCard({ item, projectId, onItemUpdated }) {
           item={item}
           projectId={projectId}
           onClose={() => setShowDetail(false)}
-          onItemUpdated={(updated) => {
+          onItemUpdated={(updated, closeModal = true) => {
             onItemUpdated(updated)
-            setShowDetail(false)
+            if (closeModal) setShowDetail(false)
           }}
         />
       )}

@@ -13,9 +13,9 @@ import Column from './Column'
 import AddColumn from './AddColumn'
 import ItemCard from './ItemCard'
 
-function Board({ projectId }) {
+function Board({ projectId, filters }) {
   const [columns, setColumns] = useState([])
-  const [items, setItems] = useState({}) // { [listId]: [...items] }
+  const [items, setItems] = useState({})
   const [loading, setLoading] = useState(true)
   const [activeItem, setActiveItem] = useState(null)
 
@@ -36,7 +36,7 @@ function Board({ projectId }) {
 
     const { data: allItems } = await supabase
       .from('items')
-      .select('*')
+      .select('*, item_assignees(user_id)')
       .eq('project_id', projectId)
       .order('position', { ascending: true })
 
@@ -129,17 +129,23 @@ function Board({ projectId }) {
       const reordered = arrayMove(listItems, activeIndex, overIndex)
       setItems(prev => ({ ...prev, [listId]: reordered }))
 
-      // Update positions in DB
       await Promise.all(reordered.map((item, index) =>
         supabase.from('items').update({ position: index, list_id: listId }).eq('id', item.id)
       ))
     } else {
-      // Just update list_id if moved to another column
       await supabase
         .from('items')
         .update({ list_id: listId, position: listItems.length - 1 })
         .eq('id', active.id)
     }
+  }
+
+  function applyFilters(listItems) {
+    return listItems.filter(item => {
+      if ((filters.assignees ?? []).length === 0) return true
+      const itemAssigneeIds = item.item_assignees?.map(a => a.user_id) ?? []
+      return filters.assignees.some(id => itemAssigneeIds.includes(id))
+    })
   }
 
   if (loading) return (
@@ -164,7 +170,8 @@ function Board({ projectId }) {
           <Column
             key={column.id}
             column={column}
-            items={items[column.id] ?? []}
+            items={applyFilters(items[column.id] ?? [])}
+            filters={filters}
             onColumnUpdated={handleColumnUpdated}
             onColumnDeleted={handleColumnDeleted}
             onItemAdded={(item) => handleItemAdded(column.id, item)}
