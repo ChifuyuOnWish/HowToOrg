@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 
 const DAY_WIDTH = 40
@@ -50,11 +50,19 @@ function toLocalMidnight(dateInput) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
 
+function toDateString(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export default function Roadmap({ projectId }) {
   const [columns, setColumns] = useState([])
   const [items, setItems] = useState({})
   const [projectCreatedAt, setProjectCreatedAt] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [dragging, setDragging] = useState(null)
   const timelineRef = useRef(null)
   const leftColRef = useRef(null)
 
@@ -86,6 +94,51 @@ export default function Roadmap({ projectId }) {
       }, 50)
     }
   }, [loading, projectCreatedAt])
+
+  const handleMouseMove = useCallback((e) => {
+    if (!dragging) return
+    const dx = e.clientX - dragging.startX
+    const daysDelta = Math.round(dx / DAY_WIDTH)
+    setDragging(prev => ({
+      ...prev,
+      currentEndOffset: prev.originalEndOffset + daysDelta
+    }))
+  }, [dragging])
+
+  const handleMouseUp = useCallback(async () => {
+    if (!dragging) return
+
+    const newEndOffset = dragging.currentEndOffset
+    const newDue = new Date(startDate)
+    newDue.setDate(newDue.getDate() + newEndOffset)
+    const newDueStr = toDateString(newDue)
+
+    setItems(prev => {
+      const next = { ...prev }
+      next[dragging.listId] = next[dragging.listId].map(item =>
+        item.id === dragging.itemId ? { ...item, due_date: newDueStr } : item
+      )
+      return next
+    })
+
+    await supabase
+      .from('items')
+      .update({ due_date: newDueStr })
+      .eq('id', dragging.itemId)
+
+    setDragging(null)
+  }, [dragging, startDate])
+
+  useEffect(() => {
+    if (dragging) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [dragging, handleMouseMove, handleMouseUp])
 
   function handleTimelineScroll() {
     if (leftColRef.current && timelineRef.current) {
@@ -183,7 +236,7 @@ export default function Roadmap({ projectId }) {
         ref={timelineRef}
         onScroll={handleTimelineScroll}
         className="flex-1 overflow-auto"
-        style={{ scrollbarWidth: 'thin' }}
+        style={{ scrollbarWidth: 'thin', cursor: dragging ? 'grabbing' : 'default' }}
       >
         <div className="relative" style={{ width: totalWidth }}>
 
@@ -232,27 +285,43 @@ export default function Roadmap({ projectId }) {
               )
 
               const { item, col } = row
+              const isDraggingThis = dragging?.itemId === item.id
               let bar = null
 
-              if (item.due_date) {
-                const due = toLocalMidnight(item.due_date)
-                const created = toLocalMidnight(item.created_at)
+              if (item.due_date || isDraggingThis) {
+                const due = isDraggingThis
+                  ? (() => { const d = new Date(startDate); d.setDate(d.getDate() + dragging.currentEndOffset); return d })()
+                  : toLocalMidnight(item.due_date)
 
+                const created = toLocalMidnight(item.created_at)
                 const startOffset = Math.max(0, daysBetween(startDate, created))
                 const endOffset = daysBetween(startDate, due)
 
-                if (endOffset >= 0 && startOffset < numDays) {
+                if (endOffset >= 0 && startOffset < numDays && endOffset >= startOffset) {
                   const left = startOffset * DAY_WIDTH
                   const width = Math.max((endOffset - startOffset + 1) * DAY_WIDTH, DAY_WIDTH)
 
                   bar = (
                     <div
-                      className="absolute top-0 bottom-0 cursor-pointer transition-all duration-150 hover:brightness-125"
+                      className="absolute top-0 bottom-0 transition-none"
                       style={{
                         left,
                         width,
-                        backgroundColor: col.color + '55',
+                        backgroundColor: col.color + (isDraggingThis ? '77' : '55'),
                         borderRight: `2px solid ${col.color}`,
+                        cursor: isDraggingThis ? 'grabbing' : 'grab',
+                      }}
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        const due = toLocalMidnight(item.due_date)
+                        const endOffset = daysBetween(startDate, due)
+                        setDragging({
+                          itemId: item.id,
+                          listId: col.id,
+                          startX: e.clientX,
+                          originalEndOffset: endOffset,
+                          currentEndOffset: endOffset,
+                        })
                       }}
                     />
                   )
