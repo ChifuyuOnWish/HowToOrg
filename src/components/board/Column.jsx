@@ -1,15 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { useDroppable } from '@dnd-kit/core'
 import { supabase } from '../../lib/supabase'
 import ItemCard from './ItemCard'
 import AddItem from './AddItem'
 
-function Column({ column, onColumnUpdated, onColumnDeleted }) {
+function Column({ column, items, onColumnUpdated, onColumnDeleted, onItemAdded, onItemUpdated }) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(column.name)
   const [showMenu, setShowMenu] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [items, setItems] = useState([])
   const menuRef = useRef(null)
+
+  const { setNodeRef } = useDroppable({ id: column.id })
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -21,28 +23,9 @@ function Column({ column, onColumnUpdated, onColumnDeleted }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  useEffect(() => {
-    async function fetchItems() {
-      const { data, error } = await supabase
-        .from('items')
-        .select('*')
-        .eq('list_id', column.id)
-        .order('position', { ascending: true })
-
-      if (error) { console.error(error); return }
-      setItems(data ?? [])
-    }
-    fetchItems()
-  }, [column.id])
-
-  function handleItemAdded(newItem) {
-    setItems(prev => [...prev, newItem])
-  }
-
   async function handleRename(e) {
     e.preventDefault()
     if (!name.trim() || name === column.name) { setEditing(false); return }
-    setLoading(true)
 
     const { data, error } = await supabase
       .from('lists')
@@ -51,7 +34,6 @@ function Column({ column, onColumnUpdated, onColumnDeleted }) {
       .select()
       .single()
 
-    setLoading(false)
     if (error) { console.error(error); return }
     onColumnUpdated(data)
     setEditing(false)
@@ -60,11 +42,7 @@ function Column({ column, onColumnUpdated, onColumnDeleted }) {
   async function handleDelete() {
     if (!confirm(`Delete "${column.name}"? All items in this list will be unassigned.`)) return
 
-    const { error } = await supabase
-      .from('lists')
-      .delete()
-      .eq('id', column.id)
-
+    const { error } = await supabase.from('lists').delete().eq('id', column.id)
     if (error) { console.error(error); return }
     onColumnDeleted(column.id)
   }
@@ -83,8 +61,7 @@ function Column({ column, onColumnUpdated, onColumnDeleted }) {
               onChange={e => setName(e.target.value)}
               onBlur={handleRename}
               autoFocus
-              className="w-full bg-[#13131f] border border-indigo-500 rounded-lg px-2 py-1
-                text-sm text-white outline-none"
+              className="w-full bg-[#13131f] border border-indigo-500 rounded-lg px-2 py-1 text-sm text-white outline-none"
             />
           </form>
         ) : (
@@ -125,25 +102,25 @@ function Column({ column, onColumnUpdated, onColumnDeleted }) {
       </div>
 
       {/* Items */}
-      <div className="flex-1 p-3 flex flex-col gap-2 overflow-y-auto max-h-[calc(100vh-280px)]">
-        {items.length === 0 && (
-          <p className="text-xs text-slate-600 text-center mt-4">No items yet</p>
-        )}
-        {items.map(item => (
-          <ItemCard
-            key={item.id}
-            item={item}
-            projectId={column.project_id}
-            onItemUpdated={(updated) =>
-            setItems(prev => prev.map(i => i.id === updated.id ? updated : i))
-            }
-          />
-        ))}
+      <div ref={setNodeRef} className="flex-1 p-3 flex flex-col gap-2 overflow-y-auto max-h-[calc(100vh-280px)]">
+        <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+          {items.length === 0 && (
+            <p className="text-xs text-slate-600 text-center mt-4">No items yet</p>
+          )}
+          {items.map(item => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              projectId={column.project_id}
+              onItemUpdated={onItemUpdated}
+            />
+          ))}
+        </SortableContext>
       </div>
 
       {/* Add item */}
       <div className="px-3 pb-3">
-        <AddItem column={column} onItemAdded={handleItemAdded} />
+        <AddItem column={column} onItemAdded={onItemAdded} />
       </div>
     </div>
   )
