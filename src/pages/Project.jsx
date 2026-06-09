@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Board from '../components/board/Board'
 import FilterBar from '../components/board/FilterBar'
+import Roadmap from '../components/roadmap/Roadmap'
 import InviteMembers from '../components/InviteMembers'
 
 function Project() {
@@ -45,7 +46,7 @@ function Project() {
         </div>
 
         <div className="flex gap-1 border-b border-[#1e1e2e]">
-          {['board', 'members'].map(t => (
+          {['board', 'roadmap', 'members'].map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -71,6 +72,8 @@ function Project() {
           <Board projectId={projectId} filters={filters} />
         </>
       )}
+
+      {tab === 'roadmap' && <Roadmap projectId={projectId} />}
 
       {tab === 'members' && (
         <div className="max-w-xl mx-auto w-full px-6 py-8">
