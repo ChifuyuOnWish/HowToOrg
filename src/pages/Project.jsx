@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Board from '../components/board/Board'
+import FilterBar from '../components/board/FilterBar'
 import InviteMembers from '../components/InviteMembers'
 
 function Project() {
@@ -10,6 +11,7 @@ function Project() {
   const [project, setProject] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('board')
+  const [filters, setFilters] = useState({ assignees: [] })
 
   useEffect(() => {
     async function fetchProject() {
@@ -34,7 +36,6 @@ function Project() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Project header */}
       <div className="px-6 pt-8 pb-0">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -43,7 +44,6 @@ function Project() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1 border-b border-[#1e1e2e]">
           {['board', 'members'].map(t => (
             <button
@@ -61,8 +61,17 @@ function Project() {
         </div>
       </div>
 
-      {/* Tab content */}
-      {tab === 'board' && <Board projectId={projectId} />}
+      {tab === 'board' && (
+        <>
+          <FilterBar
+            projectId={projectId}
+            filters={filters}
+            onFiltersChange={setFilters}
+          />
+          <Board projectId={projectId} filters={filters} />
+        </>
+      )}
+
       {tab === 'members' && (
         <div className="max-w-xl mx-auto w-full px-6 py-8">
           <InviteMembers projectId={projectId} />
