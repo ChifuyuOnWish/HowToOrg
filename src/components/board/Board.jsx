@@ -103,12 +103,15 @@ function Board({ projectId, filters }) {
 
     if (!activeListId || !overListId || activeListId === overListId) return
 
+    const targetList = columns.find(c => c.id === overListId)
+
     setItems(prev => {
       const activeItems = [...prev[activeListId]]
       const overItems = [...prev[overListId]]
       const activeIndex = activeItems.findIndex(i => i.id === active.id)
       const [moved] = activeItems.splice(activeIndex, 1)
       moved.list_id = overListId
+      if (targetList?.status) moved.status = targetList.status
       overItems.push(moved)
       return { ...prev, [activeListId]: activeItems, [overListId]: overItems }
     })
@@ -125,17 +128,28 @@ function Board({ projectId, filters }) {
     const activeIndex = listItems.findIndex(i => i.id === active.id)
     const overIndex = listItems.findIndex(i => i.id === over.id)
 
+    const targetList = columns.find(c => c.id === listId)
+    const newStatus = targetList?.status ?? null
+
     if (activeIndex !== overIndex && overIndex !== -1) {
       const reordered = arrayMove(listItems, activeIndex, overIndex)
       setItems(prev => ({ ...prev, [listId]: reordered }))
 
       await Promise.all(reordered.map((item, index) =>
-        supabase.from('items').update({ position: index, list_id: listId }).eq('id', item.id)
+        supabase.from('items').update({
+          position: index,
+          list_id: listId,
+          ...(newStatus && { status: newStatus })
+        }).eq('id', item.id)
       ))
     } else {
       await supabase
         .from('items')
-        .update({ list_id: listId, position: listItems.length - 1 })
+        .update({
+          list_id: listId,
+          position: listItems.length - 1,
+          ...(newStatus && { status: newStatus })
+        })
         .eq('id', active.id)
     }
   }

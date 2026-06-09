@@ -6,10 +6,18 @@ const COLORS = [
   '#ec4899', '#14b8a6', '#f97316', '#8b5cf6'
 ]
 
+const STATUSES = [
+  { value: '', label: 'No status' },
+  { value: 'todo', label: 'Todo' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'done', label: 'Done' },
+]
+
 function AddColumn({ projectId, onColumnAdded }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLORS[0])
+  const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e) {
@@ -29,7 +37,13 @@ function AddColumn({ projectId, onColumnAdded }) {
 
     const { data, error } = await supabase
       .from('lists')
-      .insert({ project_id: projectId, name, color, position: nextPosition })
+      .insert({
+        project_id: projectId,
+        name,
+        color,
+        position: nextPosition,
+        status: status || null
+      })
       .select()
       .single()
 
@@ -39,6 +53,7 @@ function AddColumn({ projectId, onColumnAdded }) {
     onColumnAdded(data)
     setName('')
     setColor(COLORS[0])
+    setStatus('')
     setOpen(false)
   }
 
@@ -71,7 +86,17 @@ function AddColumn({ projectId, onColumnAdded }) {
         required
       />
 
-      {/* Color picker */}
+      <select
+        value={status}
+        onChange={e => setStatus(e.target.value)}
+        className="w-full bg-[#13131f] border border-[#2a2a3d] rounded-xl px-3 py-2.5 text-sm text-white
+          outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50"
+      >
+        {STATUSES.map(s => (
+          <option key={s.value} value={s.value}>{s.label}</option>
+        ))}
+      </select>
+
       <div className="flex gap-2 flex-wrap">
         {COLORS.map(c => (
           <button
